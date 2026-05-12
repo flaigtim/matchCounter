@@ -36,7 +36,7 @@ Benötigte Python-Pakete:
 
 ## Installation
 
-### 1) Virtuelle Umgebung (empfohlen)
+### 1) Virtuelle Umgebung
 
 ```powershell
 python -m venv .venv
