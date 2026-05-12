@@ -1,5 +1,22 @@
 # Match Counter
 
+## Yearly To-Do (zuerst erledigen)
+
+1. In `counter.py` die Saisonparameter anpassen:
+   - `TEAM_URL` (1. Mannschaft, neuer Saison-Link)
+   - `SECOND_TEAM_URL` (2. Mannschaft, neuer Saison-Link)
+   - `DATE_FROM` und `DATE_TO`
+   - optional: `OWN_TEAM_NAME_PREFIX`, `HEADLESS`, `WAIT_MS`, `DEBUG`
+2. In der Overall-Excel ein neues Tabellenblatt fuer das Jahr/die Saison anlegen (z. B. `2026_2027`).
+3. In diesem neuen Overall-Blatt manuell pflegen:
+   - Stand (Datum)
+   - Saison
+   - Turnier-Spiele
+   - Anzahl der Spiele vor der Saison
+4. `counter.py` ausfuehren und neue yearly-Excel erzeugen.
+5. Jahreswerte mit `merge_excels.py` in das neue Overall-Blatt uebernehmen.
+6. Ergebnis pruefen: Namen, nur Punkt-/Pokal-/Testspiele, Sortierung nach Nachname.
+
 Dieses Repository enthält ein Python-Skript, das Spielerdaten aus fussball.de für die 1. und 2. Mannschaft sammelt und als Statistik in eine Excel-Datei exportiert.
 
 ## Was das Skript macht
@@ -20,6 +37,7 @@ Dieses Repository enthält ein Python-Skript, das Spielerdaten aus fussball.de f
 ## Projektstruktur
 
 - `counter.py` - Hauptskript für Scraping, Auswertung und Export.
+- `merge_excels.py` - übernimmt Werte aus yearly-Excel in ein gewähltes Overall-Blatt.
 - `player_stats/` - vorhandener Projektordner.
 - `yearly_stats/` - wird beim Lauf automatisch erstellt (Exportdateien).
 
@@ -88,6 +106,62 @@ Die Excel-Datei enthält zwei Tabellenblätter:
    - Datum
    - Typ
    - Mannschaft-Priorität
+
+## Jahresablauf für die Overall-Excel
+
+Für jedes neue Jahr muss in der Overall-Datei ein neues Tabellenblatt angelegt werden.
+
+Wichtig: Die Links zu den Mannschaften in `counter.py` muessen jedes Jahr auf die neue Saison aktualisiert werden (`TEAM_URL` und `SECOND_TEAM_URL`).
+
+Empfohlener Ablauf pro Saison:
+
+1. In der Overall-Excel ein neues Blatt für das Jahr/die Saison erstellen (z. B. `2026_2027`).
+2. In diesem neuen Blatt folgende Werte manuell pflegen:
+   - Stand (Datum, auf welchem Datenstand die Werte basieren)
+   - Saison
+   - Turnier-Spiele
+   - Anzahl der Spiele vor der Saison
+3. Danach die Jahreswerte aus der yearly-Datei in dieses Blatt übernehmen (mit `merge_excels.py`).
+4. Abschließend prüfen, ob Namen, Summen und Sortierung nach Nachname korrekt sind.
+
+Hinweis: Das Skript übernimmt nur die drei Spielspalten (Punktspiele, Pokalspiele, Testspiele/Freundschaftsspiele). Die oben genannten Metadaten bleiben bewusst manuell.
+
+Beispiel:
+
+```powershell
+python merge_excels.py --yearly-file player_stats/stats_2025_2026.xlsx --overall-file player_stats/_stats_overall.xlsx --overall-sheet 2025_2026
+```
+
+## Was jedes Jahr in den Python-Dateien angepasst werden muss
+
+### `counter.py`
+
+Vor jedem neuen Saisonlauf prüfen/ändern:
+
+1. `TEAM_URL` auf die neue Saison der 1. Mannschaft setzen.
+2. `SECOND_TEAM_URL` auf die neue Saison der 2. Mannschaft setzen (oder leer lassen, falls nicht benötigt).
+3. `DATE_FROM` und `DATE_TO` auf den gewünschten Saison-Zeitraum setzen.
+4. `OWN_TEAM_NAME_PREFIX` prüfen (nur ändern, wenn sich der Teamname geändert hat).
+5. Optional Laufparameter anpassen:
+   - `HEADLESS`
+   - `WAIT_MS`
+   - `DEBUG`
+
+Typischer Jahreslauf:
+
+1. `counter.py` starten und neue yearly-Excel erzeugen.
+2. Ergebnisdatei inhaltlich kurz prüfen (`Zusammenfassung`, `Einzelereignisse`).
+
+### `merge_excels.py`
+
+Am Skript selbst ist jährlich meist keine Codeänderung nötig. Pro Jahr relevant sind vor allem die Eingaben:
+
+1. Neue yearly-Datei (`--yearly-file`) angeben.
+2. Overall-Datei (`--overall-file`) angeben.
+3. Neues Jahresblatt in der Overall-Datei als Zielblatt (`--overall-sheet`) angeben.
+4. Bei abweichendem Blattnamen in der yearly-Datei `--yearly-sheet` setzen.
+
+Nur bei Strukturänderungen in Excel-Dateien (abweichende Spaltenüberschriften) muss der Alias-Abgleich im Skript erweitert werden.
 
 ## Hinweise
 
