@@ -5,9 +5,13 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.formula.translate import Translator
-from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.styles import PatternFill
+
+
+# Farben fuer Ehrungen
+HONOR_REACHED_FONT = Font(color="9C0006", bold=True)  # Rot fuer erreichte Ehrung
+HONOR_POTENTIAL_FONT = Font(color="FF8C00", bold=True)  # Orange fuer potenzielle Ehrung
 
 
 # =========================================
@@ -17,6 +21,7 @@ YEARLY_FILE = "player_stats/stats_2025_2026.xlsx"
 OVERALL_FILE = "player_stats/_stats_overall.xlsx"
 NEW_SHEET    = "25-26"   # Name des neuen Tabellenblatts
 PREV_SHEET   = "24-25"   # Vorsaison-Blatt, das kopiert wird
+REMAINING_GAMES = 6    # Anzahl Spiele bis Saisonende (fuer Prognose)
 
 
 def normalize_name(value: str) -> str:
@@ -109,33 +114,42 @@ def read_prev_name_rows(prev_ws: openpyxl.worksheet.worksheet.Worksheet) -> dict
     return name_to_row
 
 
-def ensure_row_formulas(ws: openpyxl.worksheet.worksheet.Worksheet, row: int, first_data_row: int) -> None:
-    # G (Gesamt)
-    g_cell = ws.cell(row=row, column=7)
-    if not (isinstance(g_cell.value, str) and g_cell.value.startswith("=")):
-        if row > first_data_row:
-            src_row = row - 1
-            src_formula = ws.cell(row=src_row, column=7).value
-            if isinstance(src_formula, str) and src_formula.startswith("="):
-                g_cell.value = Translator(src_formula, origin=f"G{src_row}").translate_formula(f"G{row}")
-        if not (isinstance(g_cell.value, str) and g_cell.value.startswith("=")):
-            g_cell.value = f"=C{row}+D{row}+E{row}+F{row}"
-
-    # H (Anzahl Spiele nach Saison)
-    h_cell = ws.cell(row=row, column=8)
-    if not (isinstance(h_cell.value, str) and h_cell.value.startswith("=")):
-        if row > first_data_row:
-            src_row = row - 1
-            src_formula = ws.cell(row=src_row, column=8).value
-            if isinstance(src_formula, str) and src_formula.startswith("="):
-                h_cell.value = Translator(src_formula, origin=f"H{src_row}").translate_formula(f"H{row}")
-        if not (isinstance(h_cell.value, str) and h_cell.value.startswith("=")):
-            h_cell.value = f"=G{row}+B{row}"
+def read_thresholds(ws: openpyxl.worksheet.worksheet.Worksheet) -> list[int]:
+    """Liest Schwellwerte aus J3:R3."""
+    thresholds: list[int] = []
+    for col in range(10, 19):  # J bis R
+        value = ws.cell(row=3, column=col).value
+        if value is None:
+            break
+        thresholds.append(to_int(value))
+    return thresholds
 
 
-def build_ehrung_formula(row: int) -> str:
-    # Liefert den hoechsten Schwellwert aus J3:R3, der zwischen B (vorher) und H (nachher) ueberschritten wurde.
-    return f"=IFERROR(LOOKUP(2,1/((B{row}<$J$3:$R$3)*(H{row}>$J$3:$R$3)),$J$3:$R$3),\"\")"
+def compute_honor(b_value: int, h_value: int, thresholds: list[int]) -> tuple[int | None, str]:
+    """
+    Bestimmt die Ehrung und deren Farbe.
+    Liefert (schwellwert, "reached"|"potential") oder (None, "").
+    """
+    # Erreicht: b < threshold <= h
+    for threshold in sorted(thresholds, reverse=True):
+        if b_value < threshold <= h_value:
+            return (threshold, "reached")
+    # Potenzial: b < threshold <= b + REMAINING_GAMES, aber h < threshold
+    for threshold in sorted(thresholds, reverse=True):
+        if b_value < threshold <= b_value + REMAINING_GAMES and h_value < threshold:
+            return (threshold, "potential")
+    return (None, "")
+
+
+def get_prev_h_value(prev_ws: openpyxl.worksheet.worksheet.Worksheet, name: str) -> int:
+    """Liest H-Wert aus Vorsaison fuer einen bestimmten Spieler."""
+    first_data_row = 8
+    for row in range(first_data_row, prev_ws.max_row + 1):
+        value = prev_ws.cell(row=row, column=1).value
+        if value and normalize_name(str(value)) == normalize_name(name):
+            h_val = prev_ws.cell(row=row, column=8).value
+            return to_int(h_val)
+    return 0
 
 
 def main() -> None:
@@ -174,16 +188,19 @@ def main() -> None:
     ws["B1"] = f"Saison 20{season_xx}/{season_yy}"
     ws["B4"] = f"Stand {datetime.now().strftime('%d.%m.%Y')}"
 
-    # Bereiche A8:F<letzte Zeile> und I8:I<letzte Zeile> leeren.
+    # Bereiche A8:F<letzte Zeile>, G8:I<letzte Zeile> leeren.
     first_data_row = 8
     last_row = max(ws.max_row, first_data_row + len(yearly_players) - 1)
     for row in range(first_data_row, last_row + 1):
-        for col in range(1, 7):  # A bis F
+        for col in range(1, 10):  # A bis I
             ws.cell(row=row, column=col).value = None
-        ws.cell(row=row, column=9).value = None  # I
+
+    # Schwellwerte lesen.
+    thresholds = read_thresholds(ws)
 
     # Namen aus der yearly-Datei in Spalte A schreiben.
     missing_prev_rows: list[int] = []
+    
     for idx, (name, punktspiel, pokalspiel, testspiel) in enumerate(yearly_players):
         target_row = first_data_row + idx
         ws.cell(row=target_row, column=1).value = name
@@ -191,22 +208,27 @@ def main() -> None:
         ws.cell(row=target_row, column=4).value = pokalspiel
         ws.cell(row=target_row, column=5).value = testspiel
 
+        # Spalte B: Vorsaison-Spiele
         prev_row = prev_name_rows.get(normalize_name(name))
+        b_value = 0
         if prev_row is not None:
+            b_value = to_int(src.cell(row=prev_row, column=8).value)
             ws.cell(row=target_row, column=2).value = f"='{PREV_SHEET}'!H{prev_row}"
         else:
             b_cell = ws.cell(row=target_row, column=2)
             b_cell.value = "=0"
             missing_prev_rows.append(target_row)
 
-        ensure_row_formulas(ws, target_row, first_data_row)
-        ws.cell(row=target_row, column=9).value = build_ehrung_formula(target_row)
+        # Spalten G und H: Als Formeln
+        ws.cell(row=target_row, column=7).value = f"=C{target_row}+D{target_row}+E{target_row}+F{target_row}"
+        ws.cell(row=target_row, column=8).value = f"=G{target_row}+B{target_row}"
 
-    # Spalte I nur bei echtem Eintrag (nicht leer) rot/fett formatieren.
-    ws.conditional_formatting.add(
-        f"I{first_data_row}:I{last_row}",
-        FormulaRule(formula=[f'I{first_data_row}<>""'], font=missing_font),
-    )
+        # Berechne G/H lokal fuer Ehrungslogik
+        g_value = punktspiel + pokalspiel + testspiel
+        h_value = g_value + b_value
+
+        # Spalte I: Ehrung mit Formel
+        ws.cell(row=target_row, column=9).value = f"=IFERROR(LOOKUP(2,1/((B{target_row}<$J$3:$R$3)*(H{target_row}>$J$3:$R$3)),$J$3:$R$3),\"\")"
 
     # Datenbereich ab Zeile 8 abwechselnd einfärben.
     fill_a = PatternFill(fill_type="solid", fgColor="FFFFFF")
@@ -217,9 +239,13 @@ def main() -> None:
         for col in range(1, ws.max_column + 1):
             ws.cell(row=row, column=col).fill = fill
 
-    # Fehlende Vorjahreswerte in Spalte B sichtbar markieren.
+    # Fehlende Vorjahreswerte in Spalte B sichtbar markieren (rot).
     for row in missing_prev_rows:
-        ws.cell(row=row, column=2).font = missing_font
+        ws.cell(row=row, column=2).font = HONOR_REACHED_FONT
+
+    # Alle Werte in Spalte I rot und fett markieren.
+    for row in range(first_data_row, last_row + 1):
+        ws.cell(row=row, column=9).font = HONOR_REACHED_FONT
 
     overall_wb.save(overall_path)
     print(f"Blatt '{PREV_SHEET}' kopiert nach '{NEW_SHEET}'")
