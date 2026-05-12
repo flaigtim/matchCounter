@@ -7,7 +7,7 @@
    - `SECOND_TEAM_URL` (2. Mannschaft, neuer Saison-Link)
    - `DATE_FROM` und `DATE_TO`
    - optional: `OWN_TEAM_NAME_PREFIX`, `HEADLESS`, `WAIT_MS`, `DEBUG`
-2. In der Overall-Excel ein neues Tabellenblatt fuer das Jahr/die Saison anlegen (z. B. `2026_2027`).
+2. In der Overall-Excel ein neues Tabellenblatt fuer das Jahr/die Saison anlegen (z. B. `26-27`).
 3. In diesem neuen Overall-Blatt manuell pflegen:
    - Stand (Datum)
    - Saison
