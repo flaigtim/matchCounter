@@ -1,198 +1,141 @@
 # Match Counter
 
-## Yearly To-Do (zuerst erledigen)
+Dieses Projekt automatisiert den kompletten Saison-Workflow:
 
-1. In `counter.py` die Saisonparameter anpassen:
-   - `TEAM_URL` (1. Mannschaft, neuer Saison-Link)
-   - `SECOND_TEAM_URL` (2. Mannschaft, neuer Saison-Link)
-   - `DATE_FROM` und `DATE_TO`
-   - optional: `OWN_TEAM_NAME_PREFIX`, `HEADLESS`, `WAIT_MS`, `DEBUG`
-2. In der Overall-Excel ein neues Tabellenblatt fuer das Jahr/die Saison anlegen (z. B. `26-27`).
-3. In diesem neuen Overall-Blatt manuell pflegen:
-   - Stand (Datum)
-   - Saison
-   - Turnier-Spiele
-   - Anzahl der Spiele vor der Saison
-4. `counter.py` ausfuehren und neue yearly-Excel erzeugen.
-5. Jahreswerte mit `merge_excels.py` in das neue Overall-Blatt uebernehmen.
-6. Ergebnis pruefen: Namen, nur Punkt-/Pokal-/Testspiele, Sortierung nach Nachname.
-
-Dieses Repository enthält ein Python-Skript, das Spielerdaten aus fussball.de für die 1. und 2. Mannschaft sammelt und als Statistik in eine Excel-Datei exportiert.
-
-## Was das Skript macht
-
-`counter.py` führt automatisiert folgende Schritte aus:
-
-1. Öffnet die Team-Spielpläne auf fussball.de.
-2. Setzt einen Datumsbereich (`DATE_FROM` bis `DATE_TO`).
-3. Lädt alle verfügbaren Spiele mit Ergebnis.
-4. Öffnet jedes Spiel und liest die Aufstellung der eigenen Mannschaft.
-5. Erfasst pro Spieler Einsätze nach Spieltyp:
-   - Punktspiel
-   - Pokalspiel
-   - Freundschaftsspiel
-6. Führt Daten aus 1. und 2. Mannschaft zusammen.
-7. Exportiert die Ergebnisse in eine Excel-Datei (`.xlsx`).
+1. Daten von fussball.de laden
+2. Jahreswerte in die Overall-Excel uebernehmen
+3. Urkunden als DOCX erstellen
+4. DOCX in PDF konvertieren und DOCX loeschen
 
 ## Projektstruktur
 
-- `counter.py` - Hauptskript für Scraping, Auswertung und Export.
-- `merge_excels.py` - übernimmt Werte aus yearly-Excel in ein gewähltes Overall-Blatt.
-- `player_stats/` - vorhandener Projektordner.
-- `yearly_stats/` - wird beim Lauf automatisch erstellt (Exportdateien).
+- `py_files/counter.py`: Scraping und yearly-Excel Export
+- `py_files/merge_excels.py`: Merge yearly-Excel in Overall-Excel
+- `py_files/create_certificate.py`: Urkunden als DOCX erstellen
+- `py_files/convert_certificates_to_pdf.py`: DOCX -> PDF und DOCX loeschen
+- `py_files/run_all.py`: Orchestrator fuer den gesamten Ablauf
+- `player_stats/`: Excel- und Zertifikatsdaten
 
 ## Voraussetzungen
 
-- Python 3.10+ (empfohlen)
-- Windows, Linux oder macOS
-- Internetzugang
+- Python 3.10+
+- Microsoft 365 / Word (fuer PDF-Konvertierung via docx2pdf)
+- Internetzugang (fussball.de)
 
-Benötigte Python-Pakete:
+Benötigte Pakete:
 
 - `playwright`
 - `openpyxl`
+- `docx2pdf`
 
-## Installation
-
-### 1) Virtuelle Umgebung
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### 2) Abhängigkeiten installieren
+Installation:
 
 ```powershell
-pip install playwright openpyxl
+pip install playwright openpyxl docx2pdf
 python -m playwright install chromium
 ```
 
-## Konfiguration
+## Zentraler Ablauf (empfohlen)
 
-Die wichtigsten Einstellungen stehen direkt oben in `counter.py`:
+Konfiguration erfolgt zentral in `py_files/run_all.py`.
 
-- `TEAM_URL` - URL der 1. Mannschaft
-- `SECOND_TEAM_URL` - URL der 2. Mannschaft (leer lassen, um zu deaktivieren)
-- `OWN_TEAM_NAME_PREFIX` - Präfix des Teamnamens zur Zuordnung Home/Away
-- `DATE_FROM` - Startdatum im Format `TT.MM.JJJJ`
-- `DATE_TO` - Enddatum im Format `TT.MM.JJJJ`
-- `HEADLESS` - `True` für unsichtbaren Browser, `False` mit Browserfenster
-- `WAIT_MS` - Wartezeit zwischen wichtigen UI-Schritten
-- `DEBUG` - zusätzliche Debug-Ausgaben in der Konsole
+Wichtige Config-Bloecke:
 
-## Ausführung
+1. `COUNTER_CONFIG`
+   - `first_team_url`
+   - `second_team_url`
+   - `own_team_name_prefix`
+   - `date_from`, `date_to`
+   - `headless`, `wait_ms`, `debug`
+2. `MERGE_CONFIG`
+   - `yearly`, `overall`, `new_sheet`, `prev_sheet`
+3. `CERT_CONFIG`
+   - `date`, `sheet`, `overall`, `template`, `cert_outdir`
+4. `PDF_CONFIG`
+   - `pdf_input_dir`
 
-```powershell
-python counter.py
-```
-
-## Ausgabe
-
-Nach erfolgreichem Lauf wird eine Datei erzeugt in:
-
-- `yearly_stats/stats_<startjahr>_<endjahr>.xlsx`
-
-Die Excel-Datei enthält zwei Tabellenblätter:
-
-1. `Zusammenfassung`
-   - Spieler
-   - Gesamt
-   - Punktspiel
-   - Pokalspiel
-   - Freundschaftsspiel
-2. `Einzelereignisse`
-   - Spieler
-   - Datum
-   - Typ
-   - Mannschaft-Priorität
-
-## Jahresablauf für die Overall-Excel
-
-Für jedes neue Jahr muss in der Overall-Datei ein neues Tabellenblatt angelegt werden.
-
-Wichtig: Die Links zu den Mannschaften in `counter.py` muessen jedes Jahr auf die neue Saison aktualisiert werden (`TEAM_URL` und `SECOND_TEAM_URL`).
-
-Empfohlener Ablauf pro Saison:
-
-1. In der Overall-Excel ein neues Blatt für das Jahr/die Saison erstellen (z. B. `2026_2027`).
-2. In diesem neuen Blatt folgende Werte manuell pflegen:
-   - Stand (Datum, auf welchem Datenstand die Werte basieren)
-   - Saison
-   - Turnier-Spiele
-   - Anzahl der Spiele vor der Saison
-3. Danach die Jahreswerte aus der yearly-Datei in dieses Blatt übernehmen (mit `merge_excels.py`).
-4. Abschließend prüfen, ob Namen, Summen und Sortierung nach Nachname korrekt sind.
-
-Hinweis: Das Skript übernimmt nur die drei Spielspalten (Punktspiele, Pokalspiele, Testspiele/Freundschaftsspiele). Die oben genannten Metadaten bleiben bewusst manuell.
-
-Beispiel:
+Ausfuehrung ohne Parameter:
 
 ```powershell
-python merge_excels.py --yearly-file player_stats/stats_2025_2026.xlsx --overall-file player_stats/_stats_overall.xlsx --overall-sheet 2025_2026
+python py_files/run_all.py
 ```
 
-## Was jedes Jahr in den Python-Dateien angepasst werden muss
+`run_all.py` fuehrt diese Reihenfolge aus:
 
-### `counter.py`
+1. `counter.py`
+2. `merge_excels.py`
+3. `create_certificate.py`
+4. `convert_certificates_to_pdf.py`
 
-Vor jedem neuen Saisonlauf prüfen/ändern:
+Am Ende wird die Anzahl der vorhandenen PDF-Dateien im Zielordner ausgegeben.
 
-1. `TEAM_URL` auf die neue Saison der 1. Mannschaft setzen.
-2. `SECOND_TEAM_URL` auf die neue Saison der 2. Mannschaft setzen (oder leer lassen, falls nicht benötigt).
-3. `DATE_FROM` und `DATE_TO` auf den gewünschten Saison-Zeitraum setzen.
-4. `OWN_TEAM_NAME_PREFIX` prüfen (nur ändern, wenn sich der Teamname geändert hat).
-5. Optional Laufparameter anpassen:
-   - `HEADLESS`
-   - `WAIT_MS`
-   - `DEBUG`
+## Einzelskripte (optional)
 
-Typischer Jahreslauf:
+Alle Skripte bleiben auch einzeln nutzbar.
 
-1. `counter.py` starten und neue yearly-Excel erzeugen.
-2. Ergebnisdatei inhaltlich kurz prüfen (`Zusammenfassung`, `Einzelereignisse`).
+### 1) Daten von fussball.de laden
 
-### `merge_excels.py`
+```powershell
+python py_files/counter.py
+```
 
-Am Skript selbst ist jährlich meist keine Codeänderung nötig. Pro Jahr relevant sind vor allem die Eingaben:
+Optionen (Auszug):
 
-1. Neue yearly-Datei (`--yearly-file`) angeben.
-2. Overall-Datei (`--overall-file`) angeben.
-3. Neues Jahresblatt in der Overall-Datei als Zielblatt (`--overall-sheet`) angeben.
-4. Bei abweichendem Blattnamen in der yearly-Datei `--yearly-sheet` setzen.
+- `--first-team-url` (Alias: `--team-url`)
+- `--second-team-url`
+- `--date-from`, `--date-to`
+- `--headless`, `--wait-ms`, `--debug`
 
-Nur bei Strukturänderungen in Excel-Dateien (abweichende Spaltenüberschriften) muss der Alias-Abgleich im Skript erweitert werden.
+### 2) yearly in overall mergen
 
-## Hinweise
+```powershell
+python py_files/merge_excels.py --yearly player_stats/stats_2025_2026.xlsx --overall player_stats/_stats_overall.xlsx --new-sheet 25-26 --prev-sheet 24-25
+```
 
-- Das Skript ist auf aktuelle Seitenstrukturen von fussball.de ausgelegt. Änderungen am HTML können Anpassungen im Code erforderlich machen.
-- Bei Cookie-Banner- oder UI-Abweichungen hilft häufig `HEADLESS = False` und `DEBUG = True`.
-- Der Datumsbereich wirkt sich direkt auf Laufzeit und Ergebnisumfang aus.
+### 3) Zertifikate als DOCX erstellen
+
+```powershell
+python py_files/create_certificate.py --date 06.06.2026 --sheet 25-26 --overall player_stats/_stats_overall.xlsx --template template_certificate.docx --outdir player_stats/certificates/25-26
+```
+
+### 4) DOCX -> PDF konvertieren
+
+```powershell
+python py_files/convert_certificates_to_pdf.py --input-dir player_stats/certificates/25-26
+```
+
+Verhalten:
+
+- erzeugt PDF mit gleichem Basisnamen
+- loescht die jeweilige DOCX nur bei erfolgreicher Konvertierung
+
+## Jahres-Checkliste
+
+1. In `py_files/run_all.py` Saisonwerte anpassen:
+   - `COUNTER_CONFIG.first_team_url`
+   - `COUNTER_CONFIG.second_team_url`
+   - `COUNTER_CONFIG.date_from`, `COUNTER_CONFIG.date_to`
+   - `MERGE_CONFIG.yearly`, `MERGE_CONFIG.new_sheet`, `MERGE_CONFIG.prev_sheet`
+   - `CERT_CONFIG.date`, `CERT_CONFIG.sheet`
+2. Sicherstellen, dass Overall-Excel das Vorsaison-Blatt und Zielblatt korrekt hat.
+3. `python py_files/run_all.py` ausfuehren.
+4. Ergebnis pruefen (Excel + PDFs).
 
 ## Fehlerbehebung
 
-### Playwright-Browser fehlt
+### Keine PDF-Erstellung
 
-Falls ein Fehler zu fehlenden Browser-Binaries erscheint:
+1. Prüfen, ob Microsoft Word installiert und startbar ist.
+2. Prüfen, ob `docx2pdf` installiert ist:
+
+```powershell
+python -m pip install docx2pdf
+```
+
+3. Sicherstellen, dass Dateien nicht in Word geoeffnet sind.
+
+### Playwright-Fehler
 
 ```powershell
 python -m playwright install chromium
 ```
-
-### PowerShell blockiert Aktivierung
-
-Falls die Aktivierung der venv nicht erlaubt ist:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-Dann erneut aktivieren:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-## Lizenz
-
-Aktuell ist keine Lizenzdatei hinterlegt. Ergänze bei Bedarf eine `LICENSE`-Datei.

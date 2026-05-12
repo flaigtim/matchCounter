@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +22,17 @@ YEARLY_FILE = "player_stats/stats_2025_2026.xlsx"
 OVERALL_FILE = "player_stats/_stats_overall.xlsx"
 NEW_SHEET    = "25-26"   # Name des neuen Tabellenblatts
 PREV_SHEET   = "24-25"   # Vorsaison-Blatt, das kopiert wird
-REMAINING_GAMES = 6    # Anzahl Spiele bis Saisonende (fuer Prognose)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fuehrt den Saison-Merge fuer die Excel-Dateien durch."
+    )
+    parser.add_argument("--yearly", default=YEARLY_FILE, help=f"Yearly-Datei (Standard: {YEARLY_FILE})")
+    parser.add_argument("--overall", default=OVERALL_FILE, help=f"Overall-Datei (Standard: {OVERALL_FILE})")
+    parser.add_argument("--new-sheet", default=NEW_SHEET, help=f"Neues Blatt (Standard: {NEW_SHEET})")
+    parser.add_argument("--prev-sheet", default=PREV_SHEET, help=f"Vorsaison-Blatt (Standard: {PREV_SHEET})")
+    return parser.parse_args()
 
 
 def normalize_name(value: str) -> str:
@@ -125,65 +136,45 @@ def read_thresholds(ws: openpyxl.worksheet.worksheet.Worksheet) -> list[int]:
     return thresholds
 
 
-def compute_honor(b_value: int, h_value: int, thresholds: list[int]) -> tuple[int | None, str]:
-    """
-    Bestimmt die Ehrung und deren Farbe.
-    Liefert (schwellwert, "reached"|"potential") oder (None, "").
-    """
-    # Erreicht: b < threshold <= h
-    for threshold in sorted(thresholds, reverse=True):
-        if b_value < threshold <= h_value:
-            return (threshold, "reached")
-    # Potenzial: b < threshold <= b + REMAINING_GAMES, aber h < threshold
-    for threshold in sorted(thresholds, reverse=True):
-        if b_value < threshold <= b_value + REMAINING_GAMES and h_value < threshold:
-            return (threshold, "potential")
-    return (None, "")
-
-
-def get_prev_h_value(prev_ws: openpyxl.worksheet.worksheet.Worksheet, name: str) -> int:
-    """Liest H-Wert aus Vorsaison fuer einen bestimmten Spieler."""
-    first_data_row = 8
-    for row in range(first_data_row, prev_ws.max_row + 1):
-        value = prev_ws.cell(row=row, column=1).value
-        if value and normalize_name(str(value)) == normalize_name(name):
-            h_val = prev_ws.cell(row=row, column=8).value
-            return to_int(h_val)
-    return 0
-
-
 def main() -> None:
-    yearly_path = Path(YEARLY_FILE)
-    overall_path = Path(OVERALL_FILE)
+    args = parse_args()
+
+    yearly_file = args.yearly
+    overall_file = args.overall
+    new_sheet = args.new_sheet
+    prev_sheet = args.prev_sheet
+
+    yearly_path = Path(yearly_file)
+    overall_path = Path(overall_file)
 
     if not overall_path.exists():
         raise FileNotFoundError(f"Overall-Datei nicht gefunden: {overall_path}")
 
     overall_wb = openpyxl.load_workbook(overall_path)
 
-    if PREV_SHEET not in overall_wb.sheetnames:
+    if prev_sheet not in overall_wb.sheetnames:
         raise ValueError(
-            f"Vorsaison-Blatt '{PREV_SHEET}' nicht gefunden. "
+            f"Vorsaison-Blatt '{prev_sheet}' nicht gefunden. "
             f"Vorhanden: {', '.join(overall_wb.sheetnames)}"
         )
 
-    if NEW_SHEET in overall_wb.sheetnames:
-        del overall_wb[NEW_SHEET]
+    if new_sheet in overall_wb.sheetnames:
+        del overall_wb[new_sheet]
 
-    src = overall_wb[PREV_SHEET]
+    src = overall_wb[prev_sheet]
     prev_name_rows = read_prev_name_rows(src)
     ws = overall_wb.copy_worksheet(src)
-    ws.title = NEW_SHEET
+    ws.title = new_sheet
     ws.freeze_panes = "B8"
 
     yearly_players = read_yearly_players(yearly_path)
 
     # B1:D1 mit Saisontext aus dem Blattnamen fuellen (z. B. 25-26 -> Saison 2025/26).
     try:
-        season_xx, season_yy = NEW_SHEET.split("-", 1)
+        season_xx, season_yy = new_sheet.split("-", 1)
     except ValueError as exc:
         raise ValueError(
-            f"NEW_SHEET muss das Format 'xx-yy' haben, erhalten: {NEW_SHEET}"
+            f"new-sheet muss das Format 'xx-yy' haben, erhalten: {new_sheet}"
         ) from exc
     ws["B1"] = f"Saison 20{season_xx}/{season_yy}"
     ws["B4"] = f"Stand {datetime.now().strftime('%d.%m.%Y')}"
@@ -200,6 +191,7 @@ def main() -> None:
 
     # Namen aus der yearly-Datei in Spalte A schreiben.
     missing_prev_rows: list[int] = []
+    g_values: dict[int, int] = {}
     
     for idx, (name, punktspiel, pokalspiel, testspiel) in enumerate(yearly_players):
         target_row = first_data_row + idx
@@ -213,7 +205,7 @@ def main() -> None:
         b_value = 0
         if prev_row is not None:
             b_value = to_int(src.cell(row=prev_row, column=8).value)
-            ws.cell(row=target_row, column=2).value = f"='{PREV_SHEET}'!H{prev_row}"
+            ws.cell(row=target_row, column=2).value = f"='{prev_sheet}'!H{prev_row}"
         else:
             b_cell = ws.cell(row=target_row, column=2)
             b_cell.value = "=0"
@@ -223,12 +215,13 @@ def main() -> None:
         ws.cell(row=target_row, column=7).value = f"=C{target_row}+D{target_row}+E{target_row}+F{target_row}"
         ws.cell(row=target_row, column=8).value = f"=G{target_row}+B{target_row}"
 
-        # Berechne G/H lokal fuer Ehrungslogik
+        # Berechne G/H lokal fuer Ehrungslogik und Formatierung
         g_value = punktspiel + pokalspiel + testspiel
         h_value = g_value + b_value
+        g_values[target_row] = g_value
 
         # Spalte I: Ehrung mit Formel
-        ws.cell(row=target_row, column=9).value = f"=IFERROR(LOOKUP(2,1/((B{target_row}<$J$3:$R$3)*(H{target_row}>$J$3:$R$3)),$J$3:$R$3),\"\")"
+        ws.cell(row=target_row, column=9).value = f"=IFERROR(LOOKUP(2,1/((B{target_row}<$J$3:$R$3)*(H{target_row}>=$J$3:$R$3)),$J$3:$R$3),\"\")"
 
     # Datenbereich ab Zeile 8 abwechselnd einfärben.
     fill_a = PatternFill(fill_type="solid", fgColor="FFFFFF")
@@ -247,8 +240,13 @@ def main() -> None:
     for row in range(first_data_row, last_row + 1):
         ws.cell(row=row, column=9).font = HONOR_REACHED_FONT
 
+    # Spalte G >= 50 orange und fett markieren.
+    for row, g_val in g_values.items():
+        if g_val >= 50:
+            ws.cell(row=row, column=7).font = HONOR_POTENTIAL_FONT
+
     overall_wb.save(overall_path)
-    print(f"Blatt '{PREV_SHEET}' kopiert nach '{NEW_SHEET}'")
+    print(f"Blatt '{prev_sheet}' kopiert nach '{new_sheet}'")
     print(f"Namen aus yearly uebernommen: {len(yearly_players)}")
     print(f"Gespeichert: {overall_path}")
 

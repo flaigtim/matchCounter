@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from collections import defaultdict
 import re
@@ -13,7 +14,7 @@ from playwright.sync_api import sync_playwright
 # KONFIGURATION
 # =========================================
 
-TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEJ3RA4000000VS5489BRVTHNGU03#!/"
+FIRST_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEJ3RA4000000VS5489BRVTHNGU03#!/"
 OWN_TEAM_NAME_PREFIX = "SGM Mariazell/Locherhof/Stetten-Lackendorf"
 SECOND_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-ii-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEK4EA0000000VS5489BRVTHNGU03#!/"
 DATE_FROM = "24.07.2025"
@@ -21,6 +22,35 @@ DATE_TO = "11.05.2026"
 HEADLESS = False
 WAIT_MS = 1200
 DEBUG = False
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Laedt Fussball.de Daten und exportiert Spieler-Statistiken."
+    )
+    parser.add_argument(
+        "--first-team-url",
+        "--team-url",
+        dest="first_team_url",
+        default=FIRST_TEAM_URL,
+        help="URL der 1. Mannschaft",
+    )
+    parser.add_argument(
+        "--second-team-url",
+        default=SECOND_TEAM_URL,
+        help="URL der 2. Mannschaft (leer = ueberspringen)",
+    )
+    parser.add_argument(
+        "--own-team-name-prefix",
+        default=OWN_TEAM_NAME_PREFIX,
+        help="Praefix fuer Teamzuordnung",
+    )
+    parser.add_argument("--date-from", default=DATE_FROM, help="Startdatum dd.mm.yyyy")
+    parser.add_argument("--date-to", default=DATE_TO, help="Enddatum dd.mm.yyyy")
+    parser.add_argument("--headless", action="store_true", help="Browser headless starten")
+    parser.add_argument("--wait-ms", type=int, default=WAIT_MS, help="Wartezeit in ms")
+    parser.add_argument("--debug", action="store_true", help="Debug-Ausgabe aktivieren")
+    return parser.parse_args()
 
 
 def normalize_text(value: str) -> str:
@@ -34,7 +64,7 @@ def normalize_text(value: str) -> str:
 
 
 def get_own_team_keywords() -> list[str]:
-    match = re.search(r"/mannschaft/([^/]+)/", TEAM_URL)
+    match = re.search(r"/mannschaft/([^/]+)/", FIRST_TEAM_URL)
     if not match:
         return []
 
@@ -1134,6 +1164,18 @@ def export_results(summary: dict, all_events: list) -> Path:
 
 
 def main() -> None:
+    global FIRST_TEAM_URL, SECOND_TEAM_URL, OWN_TEAM_NAME_PREFIX, DATE_FROM, DATE_TO, HEADLESS, WAIT_MS, DEBUG
+
+    args = parse_args()
+    FIRST_TEAM_URL = args.first_team_url
+    SECOND_TEAM_URL = args.second_team_url
+    OWN_TEAM_NAME_PREFIX = args.own_team_name_prefix
+    DATE_FROM = args.date_from
+    DATE_TO = args.date_to
+    HEADLESS = args.headless
+    WAIT_MS = args.wait_ms
+    DEBUG = args.debug
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
         page = browser.new_page()
@@ -1150,7 +1192,7 @@ def main() -> None:
         teams = [
             {
                 "label": "1. Mannschaft",
-                "url": TEAM_URL,
+                "url": FIRST_TEAM_URL,
                 "prefix": OWN_TEAM_NAME_PREFIX,
                 "priority": 1,
             }
