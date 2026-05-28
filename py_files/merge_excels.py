@@ -114,7 +114,7 @@ def read_yearly_players(yearly_path: Path) -> list[tuple[str, int, int, int]]:
 
 
 def read_manual_players(manual_path: Path) -> dict[str, tuple[str, int]]:
-    """Liest optional manuell erfasste Spiele aus tournaments.xlsx (A: Name, B: Spiele)."""
+    """Liest optional manuell erfasste Spiele aus einer tournaments-Datei (A: Name, B: Spiele)."""
     if not manual_path.exists():
         return {}
 
@@ -191,7 +191,16 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     ws.freeze_panes = "B8"
 
     yearly_players = read_yearly_players(yearly_path)
-    manual_path = yearly_path.parent / "tournaments.xlsx"
+
+    label_norm = label.strip().casefold()
+    if label_norm == "herren":
+        manual_filename = "herren_tournaments.xlsx"
+    elif label_norm == "damen":
+        manual_filename = "damen_tournaments.xlsx"
+    else:
+        manual_filename = "tournaments.xlsx"
+
+    manual_path = yearly_path.parent / manual_filename
     manual_players = read_manual_players(manual_path)
 
     merged_players: list[tuple[str, int, int, int, int]] = []
@@ -208,7 +217,7 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     for key, (name, manual_games) in manual_players.items():
         if key in used_manual_keys:
             continue
-        # Spieler nur aus tournaments.xlsx ebenfalls im Gesamtblatt aufnehmen.
+        # Spieler nur aus der tournaments-Datei ebenfalls im Gesamtblatt aufnehmen.
         merged_players.append((name, 0, 0, 0, manual_games))
 
     # Ausgabe im neuen Saisonblatt alphabetisch nach Name (Spalte A) sortieren.
@@ -295,10 +304,10 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     print(f"[{label}] Blatt '{prev_sheet}' kopiert nach '{new_sheet}'")
     print(f"[{label}] Namen aus yearly uebernommen: {len(yearly_players)}")
     if manual_path.exists():
-        print(f"[{label}] tournaments.xlsx gefunden: {manual_path}")
-        print(f"[{label}] Zusatzeintraege aus tournaments.xlsx: {len(manual_players)}")
+        print(f"[{label}] {manual_filename} gefunden: {manual_path}")
+        print(f"[{label}] Zusatzeintraege aus {manual_filename}: {len(manual_players)}")
     else:
-        print(f"[{label}] Keine tournaments.xlsx gefunden (optional): {manual_path}")
+        print(f"[{label}] Keine {manual_filename} gefunden (optional): {manual_path}")
     print(f"[{label}] Namen gesamt im neuen Blatt: {len(merged_players)}")
     print(f"[{label}] Gespeichert: {overall_path}")
 
