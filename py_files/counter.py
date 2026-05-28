@@ -14,11 +14,11 @@ from playwright.sync_api import sync_playwright
 # KONFIGURATION
 # =========================================
 
-FIRST_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEJ3RA4000000VS5489BRVTHNGU03#!/"
-OWN_TEAM_NAME_PREFIX = "SGM Mariazell/Locherhof/Stetten-Lackendorf"
-SECOND_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-ii-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEK4EA0000000VS5489BRVTHNGU03#!/"
+FIRST_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-locherhof-mariazell-fv-locherhof-wuerttemberg/-/saison/2526/team-id/011MIB7LHO000000VTVG0001VTR8C1K7#!/"
+OWN_TEAM_NAME_PREFIX = "SGM Locherhof"
+SECOND_TEAM_URL = ""
 DATE_FROM = "24.07.2025"
-DATE_TO = "11.05.2026"
+DATE_TO = "27.05.2026"
 HEADLESS = False
 WAIT_MS = 1200
 DEBUG = False
@@ -128,35 +128,30 @@ def click_los_button(page) -> bool:
     except Exception:
         pass
 
-    selector_candidates = [
-        "button:has-text('Los')",
-        "a:has-text('Los')",
-        "input[type='submit'][value*='Los' i]",
-        "button[title*='Los' i]",
-        "button[aria-label*='Los' i]",
-    ]
-    for selector in selector_candidates:
-        try:
-            loc = page.locator(selector).first
-            if loc.is_visible(timeout=250):
-                loc.click(timeout=800)
-                return True
-        except Exception:
-            pass
+    los_word_pattern = re.compile(r"\blos\b", re.IGNORECASE)
 
-    # Fallback: alle moeglichen Elemente durchsuchen und den sichtbaren Los-Button klicken.
+    # Nur echte Buttons pruefen und "Los" als eigenes Wort matchen (nicht z.B. "sieglos").
     try:
-        candidates = page.locator("button, a, input[type='submit'], input[type='button']")
+        candidates = page.locator("button")
         count = candidates.count()
         for i in range(count):
             el = candidates.nth(i)
             if not el.is_visible():
                 continue
-            text = (el.inner_text() or "").strip().lower()
-            value = ((el.get_attribute("value") or "").strip()).lower()
-            title = ((el.get_attribute("title") or "").strip()).lower()
-            aria = ((el.get_attribute("aria-label") or "").strip()).lower()
-            if "los" in text or "los" in value or "los" in title or "los" in aria:
+
+            try:
+                if not el.is_enabled():
+                    continue
+            except Exception:
+                pass
+
+            text = (el.inner_text() or "").strip()
+            value = (el.get_attribute("value") or "").strip()
+            title = (el.get_attribute("title") or "").strip()
+            aria = (el.get_attribute("aria-label") or "").strip()
+            combined = " ".join(part for part in [text, value, title, aria] if part)
+
+            if los_word_pattern.search(combined):
                 try:
                     el.click(timeout=1000)
                 except Exception:
@@ -256,7 +251,7 @@ def period_token(value: str) -> str:
 
 def extract_team_players(page, team_name_prefix: str) -> list[str]:
     lineup_data = page.evaluate(
-        """
+        r"""
         ({ teamNamePrefix }) => {
             const normalize = (value) => {
                 return (value || "")
@@ -353,7 +348,7 @@ def extract_team_players(page, team_name_prefix: str) -> list[str]:
 
 def get_match_date(page, link: str) -> str:
     raw = page.evaluate(
-        """
+        r"""
         () => {
             const linkSelectors = [
                 '.stage.header a.competition',
@@ -836,13 +831,14 @@ def collect_played_match_links(page):
     
     # Finde den Los-Button und anschließend die erste Tabelle, extrahiere alle Links daraus
     link_list = page.evaluate(
-        """
+        r"""
         () => {
             // Suche nach einem Element mit "Los" Text
             let losButton = null;
             const buttons = document.querySelectorAll('button, a, input[type="submit"], input[type="button"]');
             for (let b of buttons) {
-                if ((b.innerText || b.value || b.title || '').toLowerCase().includes('los')) {
+                const label = (b.innerText || b.value || b.title || '').trim();
+                if (/\blos\b/i.test(label)) {
                     losButton = b;
                     break;
                 }
@@ -884,16 +880,15 @@ def collect_played_match_links(page):
             }
 
             // Extrahiere nur Links aus column-score, bei denen bereits ein Ergebnis steht.
-            // Spiele ohne Ergebnis enthalten dort stattdessen nur einen info-text mit Datum/Uhrzeit.
+            // Spiele ohne Ergebnis enthalten dort stattdessen meist keine Score-Spans.
             const links = [];
             const scoreAnchors = table.querySelectorAll(
                 'td.column-score a[href*="/spiel/"], td.column-score a[href*="/match/"]'
             );
             for (let a of scoreAnchors) {
-                const hasInfoText = !!a.querySelector('.info-text');
                 const hasScoreLeft = !!a.querySelector('.score-left');
                 const hasScoreRight = !!a.querySelector('.score-right');
-                if (hasInfoText || !hasScoreLeft || !hasScoreRight) {
+                if (!hasScoreLeft || !hasScoreRight) {
                     continue;
                 }
 
