@@ -113,6 +113,34 @@ def read_yearly_players(yearly_path: Path) -> list[tuple[str, int, int, int]]:
     return players
 
 
+def read_manual_players(manual_path: Path) -> dict[str, tuple[str, int]]:
+    """Liest optional manuell erfasste Spiele aus tournaments.xlsx (A: Name, B: Spiele)."""
+    if not manual_path.exists():
+        return {}
+
+    manual_wb = openpyxl.load_workbook(manual_path, data_only=True)
+    sheet = manual_wb.active
+
+    players: dict[str, tuple[str, int]] = {}
+    for row in range(2, sheet.max_row + 1):  # Zeile 1 = Kopfzeile
+        name_value = sheet.cell(row=row, column=1).value
+        if not name_value:
+            continue
+        name = str(name_value).strip()
+        if not name:
+            continue
+
+        games = to_int(sheet.cell(row=row, column=2).value)
+        key = normalize_name(name)
+        if key in players:
+            existing_name, existing_games = players[key]
+            players[key] = (existing_name, existing_games + games)
+        else:
+            players[key] = (name, games)
+
+    return players
+
+
 def read_prev_name_rows(prev_ws: openpyxl.worksheet.worksheet.Worksheet) -> dict[str, int]:
     first_data_row = 8
     name_to_row: dict[str, int] = {}
@@ -163,6 +191,28 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     ws.freeze_panes = "B8"
 
     yearly_players = read_yearly_players(yearly_path)
+    manual_path = yearly_path.parent / "tournaments.xlsx"
+    manual_players = read_manual_players(manual_path)
+
+    merged_players: list[tuple[str, int, int, int, int]] = []
+    used_manual_keys: set[str] = set()
+
+    for name, punktspiel, pokalspiel, testspiel in yearly_players:
+        key = normalize_name(name)
+        manual_games = 0
+        if key in manual_players:
+            manual_games = manual_players[key][1]
+            used_manual_keys.add(key)
+        merged_players.append((name, punktspiel, pokalspiel, testspiel, manual_games))
+
+    for key, (name, manual_games) in manual_players.items():
+        if key in used_manual_keys:
+            continue
+        # Spieler nur aus tournaments.xlsx ebenfalls im Gesamtblatt aufnehmen.
+        merged_players.append((name, 0, 0, 0, manual_games))
+
+    # Ausgabe im neuen Saisonblatt alphabetisch nach Name (Spalte A) sortieren.
+    merged_players.sort(key=lambda player: normalize_name(player[0]))
 
     # B1:D1 mit Saisontext aus dem Blattnamen fuellen (z. B. 25-26 -> Saison 2025/26).
     try:
@@ -176,7 +226,7 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
 
     # Bereiche A8:F<letzte Zeile>, G8:I<letzte Zeile> leeren.
     first_data_row = 8
-    last_row = max(ws.max_row, first_data_row + len(yearly_players) - 1)
+    last_row = max(ws.max_row, first_data_row + len(merged_players) - 1)
     for row in range(first_data_row, last_row + 1):
         for col in range(1, 10):  # A bis I
             ws.cell(row=row, column=col).value = None
@@ -188,12 +238,13 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     missing_prev_rows: list[int] = []
     g_values: dict[int, int] = {}
     
-    for idx, (name, punktspiel, pokalspiel, testspiel) in enumerate(yearly_players):
+    for idx, (name, punktspiel, pokalspiel, testspiel, manual_games) in enumerate(merged_players):
         target_row = first_data_row + idx
         ws.cell(row=target_row, column=1).value = name
         ws.cell(row=target_row, column=3).value = punktspiel
         ws.cell(row=target_row, column=4).value = pokalspiel
         ws.cell(row=target_row, column=5).value = testspiel
+        ws.cell(row=target_row, column=6).value = manual_games
 
         # Spalte B: Vorsaison-Spiele
         prev_row = prev_name_rows.get(normalize_name(name))
@@ -211,7 +262,7 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
         ws.cell(row=target_row, column=8).value = f"=G{target_row}+B{target_row}"
 
         # Berechne G/H lokal fuer Ehrungslogik und Formatierung
-        g_value = punktspiel + pokalspiel + testspiel
+        g_value = punktspiel + pokalspiel + testspiel + manual_games
         h_value = g_value + b_value
         g_values[target_row] = g_value
 
@@ -243,6 +294,12 @@ def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet:
     overall_wb.save(overall_path)
     print(f"[{label}] Blatt '{prev_sheet}' kopiert nach '{new_sheet}'")
     print(f"[{label}] Namen aus yearly uebernommen: {len(yearly_players)}")
+    if manual_path.exists():
+        print(f"[{label}] tournaments.xlsx gefunden: {manual_path}")
+        print(f"[{label}] Zusatzeintraege aus tournaments.xlsx: {len(manual_players)}")
+    else:
+        print(f"[{label}] Keine tournaments.xlsx gefunden (optional): {manual_path}")
+    print(f"[{label}] Namen gesamt im neuen Blatt: {len(merged_players)}")
     print(f"[{label}] Gespeichert: {overall_path}")
 
 
