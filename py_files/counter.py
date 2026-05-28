@@ -14,11 +14,13 @@ from playwright.sync_api import sync_playwright
 # KONFIGURATION
 # =========================================
 
-FIRST_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-locherhof-mariazell-fv-locherhof-wuerttemberg/-/saison/2526/team-id/011MIB7LHO000000VTVG0001VTR8C1K7#!/"
-OWN_TEAM_NAME_PREFIX = "SGM Locherhof"
-SECOND_TEAM_URL = ""
+FIRST_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEJ3RA4000000VS5489BRVTHNGU03#!/"
+MEN_TEAM_NAME_PREFIX = "SGM Mariazell"
+SECOND_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-ii-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEK4EA0000000VS5489BRVTHNGU03#!/"
+WOMEN_TEAM_URL = "https://www.fussball.de/mannschaft/sgm-locherhof-mariazell-fv-locherhof-wuerttemberg/-/saison/2526/team-id/011MIB7LHO000000VTVG0001VTR8C1K7#!/"
+WOMEN_TEAM_NAME_PREFIX = "SGM Locherhof"
 DATE_FROM = "24.07.2025"
-DATE_TO = "27.05.2026"
+DATE_TO = "08.06.2026"
 HEADLESS = False
 WAIT_MS = 1200
 DEBUG = False
@@ -41,9 +43,19 @@ def parse_args() -> argparse.Namespace:
         help="URL der 2. Mannschaft (leer = ueberspringen)",
     )
     parser.add_argument(
+        "--women-team-url",
+        default=WOMEN_TEAM_URL,
+        help="URL der Damen-Mannschaft (leer = ueberspringen)",
+    )
+    parser.add_argument(
         "--own-team-name-prefix",
-        default=OWN_TEAM_NAME_PREFIX,
+        default=MEN_TEAM_NAME_PREFIX,
         help="Praefix fuer Teamzuordnung",
+    )
+    parser.add_argument(
+        "--women-team-name-prefix",
+        default=WOMEN_TEAM_NAME_PREFIX,
+        help="Praefix fuer Damen-Teamzuordnung",
     )
     parser.add_argument("--date-from", default=DATE_FROM, help="Startdatum dd.mm.yyyy")
     parser.add_argument("--date-to", default=DATE_TO, help="Enddatum dd.mm.yyyy")
@@ -249,7 +261,7 @@ def period_token(value: str) -> str:
     return match.group(1) if match else "unknown"
 
 
-def extract_team_players(page, team_name_prefix: str) -> list[str]:
+def extract_team_players(page, team_name_prefix: str) -> list[dict[str, str]]:
     lineup_data = page.evaluate(
         r"""
         ({ teamNamePrefix }) => {
@@ -289,19 +301,58 @@ def extract_team_players(page, team_name_prefix: str) -> list[str]:
 
             const wrappers = Array.from(document.querySelectorAll('.player-wrapper.' + ownSide));
             const links = [];
+            const readMinutesPlayed = (wrapper) => {
+                const texts = [
+                    wrapper.getAttribute('data-minute'),
+                    wrapper.getAttribute('data-minutes'),
+                    wrapper.getAttribute('title'),
+                    wrapper.getAttribute('aria-label'),
+                    wrapper.innerText,
+                    wrapper.textContent,
+                ];
+
+                for (const raw of texts) {
+                    if (!raw) {
+                        continue;
+                    }
+
+                    const text = String(raw).replace(/\s+/g, ' ').trim();
+                    const minuteMatch = text.match(/\b(\d{1,3}(?:\+\d{1,2})?)\s*(?:'|min\.?|minutes?)\b/i)
+                        || text.match(/\b(\d{1,3}(?:\+\d{1,2})?)'/i);
+                    if (minuteMatch) {
+                        return minuteMatch[1];
+                    }
+                }
+
+                return '';
+            };
+
+            const players = [];
             for (const wrapper of wrappers) {
                 const anchor = wrapper.querySelector('a[href]');
+                let href = '';
                 if (anchor && anchor.href) {
-                    links.push(anchor.href);
+                    href = anchor.href;
+                } else {
+                    const rawHref = wrapper.getAttribute('href');
+                    if (rawHref) {
+                        href = new URL(rawHref, window.location.href).href;
+                    }
+                }
+
+                if (!href) {
                     continue;
                 }
-                const href = wrapper.getAttribute('href');
-                if (href) {
-                    links.push(new URL(href, window.location.href).href);
-                }
+
+                links.push(href);
+                players.push({
+                    profileUrl: href,
+                    minutesPlayed: readMinutesPlayed(wrapper),
+                });
             }
 
             return {
+                players,
                 profileUrls: Array.from(new Set(links)),
             };
         }
@@ -309,9 +360,16 @@ def extract_team_players(page, team_name_prefix: str) -> list[str]:
         {"teamNamePrefix": team_name_prefix},
     )
 
+    lineup_players = lineup_data.get("players", [])
     profile_links = lineup_data.get("profileUrls", [])
     if not profile_links:
         return []
+
+    minutes_by_profile_url = {
+        item.get("profileUrl"): item.get("minutesPlayed", "")
+        for item in lineup_players
+        if isinstance(item, dict) and item.get("profileUrl")
+    }
 
     lineup_url = page.url
     seen_names = set()
@@ -333,7 +391,8 @@ def extract_team_players(page, team_name_prefix: str) -> list[str]:
             if key in seen_names:
                 continue
             seen_names.add(key)
-            names.append(profile_name)
+            minutes_played = minutes_by_profile_url.get(profile_url, "")
+            names.append({"name": profile_name, "minutes": minutes_played})
         except Exception:
             pass
         finally:
@@ -995,10 +1054,11 @@ def collect_player_events_for_team(page, schedule_url: str, links, team_name_pre
         for player in players:
             events.append(
                 {
-                    "player": player,
+                    "player": player["name"],
                     "date": match_date,
                     "type": match_type,
                     "team_priority": team_priority,
+                    "minutes": player.get("minutes", ""),
                 }
             )
 
@@ -1020,6 +1080,7 @@ def summarize_player_events(events) -> dict:
             per_player_per_day[player][date] = {
                 "type": event["type"],
                 "team_priority": event["team_priority"],
+                "minutes": event.get("minutes", ""),
             }
 
     summary = {}
@@ -1084,12 +1145,13 @@ def print_summary(summary: dict) -> None:
         )
 
 
-def export_results(summary: dict, all_events: list) -> Path:
-    out_dir = Path(__file__).parent / "yearly_stats"
-    out_dir.mkdir(parents=True, exist_ok=True)
+def export_results(summary: dict, all_events: list, output_prefix: str) -> Path:
     start_token = period_token(DATE_FROM)
     end_token = period_token(DATE_TO)
-    out_file = out_dir / f"stats_{start_token}_{end_token}.xlsx"
+    season_folder = f"{start_token}_{end_token}"
+    out_dir = Path(__file__).parent.parent / "player_stats" / "yearly_stats" / season_folder
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"{output_prefix}_stats_{start_token}_{end_token}.xlsx"
 
     wb = openpyxl.Workbook()
 
@@ -1126,7 +1188,7 @@ def export_results(summary: dict, all_events: list) -> Path:
 
     # ── Blatt 2: Rohdaten (Einzelereignisse) ─────────────────────────
     ws_events = wb.create_sheet(title="Einzelereignisse")
-    event_headers = ["Spieler", "Datum", "Typ", "Mannschaft-Prioritaet"]
+    event_headers = ["Spieler", "Datum", "Typ", "Minuten", "Mannschaft-Prioritaet"]
     for col, text in enumerate(event_headers, start=1):
         cell = ws_events.cell(row=1, column=col, value=text)
         cell.font = header_font
@@ -1146,25 +1208,31 @@ def export_results(summary: dict, all_events: list) -> Path:
             format_player_name_for_excel(event["player"]),
             format_date_for_output(event["date"]),
             event["type"],
+            event.get("minutes", ""),
             event["team_priority"],
         ])
 
     ws_events.column_dimensions["A"].width = 30
     ws_events.column_dimensions["B"].width = 14
     ws_events.column_dimensions["C"].width = 20
-    ws_events.column_dimensions["D"].width = 22
+    ws_events.column_dimensions["D"].width = 12
+    ws_events.column_dimensions["E"].width = 22
 
     wb.save(out_file)
     return out_file
 
 
 def main() -> None:
-    global FIRST_TEAM_URL, SECOND_TEAM_URL, OWN_TEAM_NAME_PREFIX, DATE_FROM, DATE_TO, HEADLESS, WAIT_MS, DEBUG
+    global FIRST_TEAM_URL, SECOND_TEAM_URL, WOMEN_TEAM_URL
+    global MEN_TEAM_NAME_PREFIX, WOMEN_TEAM_NAME_PREFIX
+    global DATE_FROM, DATE_TO, HEADLESS, WAIT_MS, DEBUG
 
     args = parse_args()
     FIRST_TEAM_URL = args.first_team_url
     SECOND_TEAM_URL = args.second_team_url
-    OWN_TEAM_NAME_PREFIX = args.own_team_name_prefix
+    WOMEN_TEAM_URL = args.women_team_url
+    MEN_TEAM_NAME_PREFIX = args.own_team_name_prefix
+    WOMEN_TEAM_NAME_PREFIX = args.women_team_name_prefix
     DATE_FROM = args.date_from
     DATE_TO = args.date_to
     HEADLESS = args.headless
@@ -1184,30 +1252,55 @@ def main() -> None:
             }
         )
 
-        teams = [
+        herren_teams = [
             {
                 "label": "1. Mannschaft",
                 "url": FIRST_TEAM_URL,
-                "prefix": OWN_TEAM_NAME_PREFIX,
+                "prefix": MEN_TEAM_NAME_PREFIX,
                 "priority": 1,
             }
         ]
 
         if SECOND_TEAM_URL.strip():
-            teams.append(
+            herren_teams.append(
                 {
                     "label": "2. Mannschaft",
                     "url": SECOND_TEAM_URL,
-                    "prefix": OWN_TEAM_NAME_PREFIX,
+                    "prefix": MEN_TEAM_NAME_PREFIX,
                     "priority": 2,
                 }
             )
         else:
             print("Hinweis: SECOND_TEAM_URL ist leer. 2. Mannschaft wird uebersprungen.")
 
-        all_events = []
+        damen_events = []
+        if WOMEN_TEAM_URL.strip():
+            women_prefix = WOMEN_TEAM_NAME_PREFIX.strip() or MEN_TEAM_NAME_PREFIX
+            women_team = {
+                "label": "Damen",
+                "url": WOMEN_TEAM_URL,
+                "prefix": women_prefix,
+                "priority": 1,
+            }
 
-        for team in teams:
+            open_matchplan_set_dates_and_submit(page, women_team["url"])
+            page.wait_for_timeout(WAIT_MS)
+            schedule_url = page.url
+            click_mehr_laden_until_done(page)
+            links = collect_played_match_links(page)
+            damen_events = collect_player_events_for_team(
+                page,
+                schedule_url,
+                links,
+                women_team["prefix"],
+                women_team["priority"],
+                women_team["label"],
+            )
+        else:
+            print("Hinweis: WOMEN_TEAM_URL ist leer. Damen werden uebersprungen.")
+
+        herren_events = []
+        for team in herren_teams:
             open_matchplan_set_dates_and_submit(page, team["url"])
             page.wait_for_timeout(WAIT_MS)
 
@@ -1223,13 +1316,25 @@ def main() -> None:
                 team["priority"],
                 team["label"],
             )
-            all_events.extend(team_events)
+            herren_events.extend(team_events)
 
-        summary = summarize_player_events(all_events)
-        print_summary(summary)
+        if herren_events:
+            print("\n=== Herren ===")
+            herren_summary = summarize_player_events(herren_events)
+            print_summary(herren_summary)
+            herren_out_file = export_results(herren_summary, herren_events, output_prefix="herren")
+            print(f"\nExport Herren gespeichert: {herren_out_file}")
+        else:
+            print("\nKeine Herren-Daten gefunden.")
 
-        out_file = export_results(summary, all_events)
-        print(f"\nExport gespeichert: {out_file}")
+        if damen_events:
+            print("\n=== Damen ===")
+            damen_summary = summarize_player_events(damen_events)
+            print_summary(damen_summary)
+            damen_out_file = export_results(damen_summary, damen_events, output_prefix="damen")
+            print(f"\nExport Damen gespeichert: {damen_out_file}")
+        else:
+            print("\nKeine Damen-Daten gefunden.")
 
         browser.close()
 

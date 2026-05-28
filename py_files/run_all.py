@@ -19,17 +19,21 @@ SCRIPTS_IN_ORDER = [
 COUNTER_CONFIG: dict[str, object] = {
     "first_team_url": "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEJ3RA4000000VS5489BRVTHNGU03#!/",
     "second_team_url": "https://www.fussball.de/mannschaft/sgm-mariazell-locherhof-stetten-lackendorf-ii-sv-mariazell-wuerttemberg/-/saison/2526/team-id/02TCEK4EA0000000VS5489BRVTHNGU03#!/",
-    "own_team_name_prefix": "SGM Mariazell/Locherhof/Stetten-Lackendorf",
+    "women_team_url": "https://www.fussball.de/mannschaft/sgm-locherhof-mariazell-fv-locherhof-wuerttemberg/-/saison/2526/team-id/011MIB7LHO000000VTVG0001VTR8C1K7#!/",
+    "own_team_name_prefix": "SGM Mariazell",
+    "women_team_name_prefix": "SGM Locherhof",
     "date_from": "24.07.2025",
-    "date_to": "11.05.2026",
+    "date_to": "08.06.2026",
     "headless": False,
     "wait_ms": 1200,
     "debug": False,
 }
 
 MERGE_CONFIG: dict[str, object] = {
-    "yearly": "player_stats/stats_2025_2026.xlsx",
-    "overall": "player_stats/_stats_overall.xlsx",
+    "yearly_herren": "player_stats/yearly_stats/2025_2026/herren_stats_2025_2026.xlsx",
+    "overall_herren": "player_stats/_herren_stats_overall.xlsx",
+    "yearly_damen": "player_stats/yearly_stats/2025_2026/damen_stats_2025_2026.xlsx",
+    "overall_damen": "player_stats/_damen_stats_overall.xlsx",
     "new_sheet": "25-26",
     "prev_sheet": "24-25",
 }
@@ -37,9 +41,11 @@ MERGE_CONFIG: dict[str, object] = {
 CERT_CONFIG: dict[str, object] = {
     "date": "06.06.2026",
     "sheet": "25-26",
-    "overall": "player_stats/_stats_overall.xlsx",
+    "overall_herren": "player_stats/_herren_stats_overall.xlsx",
+    "overall_damen": "player_stats/_damen_stats_overall.xlsx",
     "template": "template_certificate.docx",
-    "cert_outdir": "player_stats/certificates/25-26",
+    "cert_outdir_herren": "player_stats/certificates/25-26",
+    "cert_outdir_damen": "player_stats/certificates/25-26",
 }
 
 PDF_CONFIG: dict[str, object] = {
@@ -81,8 +87,12 @@ def main() -> None:
                 extra_args.extend(["--first-team-url", str(COUNTER_CONFIG["first_team_url"])])
             if COUNTER_CONFIG.get("second_team_url") is not None:
                 extra_args.extend(["--second-team-url", str(COUNTER_CONFIG["second_team_url"])])
+            if COUNTER_CONFIG.get("women_team_url") is not None:
+                extra_args.extend(["--women-team-url", str(COUNTER_CONFIG["women_team_url"])])
             if isinstance(COUNTER_CONFIG.get("own_team_name_prefix"), str) and COUNTER_CONFIG["own_team_name_prefix"]:
                 extra_args.extend(["--own-team-name-prefix", str(COUNTER_CONFIG["own_team_name_prefix"])])
+            if COUNTER_CONFIG.get("women_team_name_prefix") is not None:
+                extra_args.extend(["--women-team-name-prefix", str(COUNTER_CONFIG["women_team_name_prefix"])])
             if isinstance(COUNTER_CONFIG.get("date_from"), str) and COUNTER_CONFIG["date_from"]:
                 extra_args.extend(["--date-from", str(COUNTER_CONFIG["date_from"])])
             if isinstance(COUNTER_CONFIG.get("date_to"), str) and COUNTER_CONFIG["date_to"]:
@@ -95,10 +105,14 @@ def main() -> None:
                 extra_args.append("--debug")
 
         if script_name == "merge_excels.py":
-            if isinstance(MERGE_CONFIG.get("yearly"), str) and MERGE_CONFIG["yearly"]:
-                extra_args.extend(["--yearly", str(MERGE_CONFIG["yearly"])])
-            if isinstance(MERGE_CONFIG.get("overall"), str) and MERGE_CONFIG["overall"]:
-                extra_args.extend(["--overall", str(MERGE_CONFIG["overall"])])
+            if isinstance(MERGE_CONFIG.get("yearly_herren"), str) and MERGE_CONFIG["yearly_herren"]:
+                extra_args.extend(["--yearly-herren", str(MERGE_CONFIG["yearly_herren"])])
+            if isinstance(MERGE_CONFIG.get("overall_herren"), str) and MERGE_CONFIG["overall_herren"]:
+                extra_args.extend(["--overall-herren", str(MERGE_CONFIG["overall_herren"])])
+            if isinstance(MERGE_CONFIG.get("yearly_damen"), str) and MERGE_CONFIG["yearly_damen"]:
+                extra_args.extend(["--yearly-damen", str(MERGE_CONFIG["yearly_damen"])])
+            if isinstance(MERGE_CONFIG.get("overall_damen"), str) and MERGE_CONFIG["overall_damen"]:
+                extra_args.extend(["--overall-damen", str(MERGE_CONFIG["overall_damen"])])
             if isinstance(MERGE_CONFIG.get("new_sheet"), str) and MERGE_CONFIG["new_sheet"]:
                 extra_args.extend(["--new-sheet", str(MERGE_CONFIG["new_sheet"])])
             if isinstance(MERGE_CONFIG.get("prev_sheet"), str) and MERGE_CONFIG["prev_sheet"]:
@@ -109,18 +123,22 @@ def main() -> None:
                 extra_args.extend(["--date", str(CERT_CONFIG["date"])])
             if isinstance(CERT_CONFIG.get("sheet"), str) and CERT_CONFIG["sheet"]:
                 extra_args.extend(["--sheet", str(CERT_CONFIG["sheet"])])
-            if isinstance(CERT_CONFIG.get("overall"), str) and CERT_CONFIG["overall"]:
-                extra_args.extend(["--overall", str(CERT_CONFIG["overall"])])
+            if isinstance(CERT_CONFIG.get("overall_herren"), str) and CERT_CONFIG["overall_herren"]:
+                extra_args.extend(["--overall-herren", str(CERT_CONFIG["overall_herren"])])
+            if isinstance(CERT_CONFIG.get("overall_damen"), str) and CERT_CONFIG["overall_damen"]:
+                extra_args.extend(["--overall-damen", str(CERT_CONFIG["overall_damen"])])
             if isinstance(CERT_CONFIG.get("template"), str) and CERT_CONFIG["template"]:
                 extra_args.extend(["--template", str(CERT_CONFIG["template"])])
-            if isinstance(CERT_CONFIG.get("cert_outdir"), str) and CERT_CONFIG["cert_outdir"]:
-                extra_args.extend(["--outdir", str(CERT_CONFIG["cert_outdir"])])
-
+            if isinstance(CERT_CONFIG.get("cert_outdir_herren"), str) and CERT_CONFIG["cert_outdir_herren"]:
+                extra_args.extend(["--outdir-herren", str(CERT_CONFIG["cert_outdir_herren"])])
+            if isinstance(CERT_CONFIG.get("cert_outdir_damen"), str) and CERT_CONFIG["cert_outdir_damen"]:
+                extra_args.extend(["--outdir-damen", str(CERT_CONFIG["cert_outdir_damen"])])
         if script_name == "convert_certificates_to_pdf.py":
             if isinstance(PDF_CONFIG.get("pdf_input_dir"), str) and PDF_CONFIG["pdf_input_dir"]:
                 extra_args.extend(["--input-dir", str(PDF_CONFIG["pdf_input_dir"])])
-            elif isinstance(CERT_CONFIG.get("cert_outdir"), str) and CERT_CONFIG["cert_outdir"]:
-                extra_args.extend(["--input-dir", str(CERT_CONFIG["cert_outdir"])])
+            elif isinstance(CERT_CONFIG.get("cert_outdir_herren"), str) and CERT_CONFIG["cert_outdir_herren"]:
+                # Root-Verzeichnis fuer rekursive Suche beider Teams.
+                extra_args.extend(["--input-dir", str(Path(str(CERT_CONFIG["cert_outdir_herren"])).parent)])
 
         exit_code = run_step(
             python_exe=sys.executable,
@@ -134,7 +152,9 @@ def main() -> None:
 
     pdf_dir_raw = PDF_CONFIG.get("pdf_input_dir")
     if not isinstance(pdf_dir_raw, str) or not pdf_dir_raw:
-        pdf_dir_raw = CERT_CONFIG.get("cert_outdir")
+        cert_herren = CERT_CONFIG.get("cert_outdir_herren")
+        if isinstance(cert_herren, str) and cert_herren:
+            pdf_dir_raw = str(Path(cert_herren).parent)
 
     if isinstance(pdf_dir_raw, str) and pdf_dir_raw:
         pdf_dir = project_root / pdf_dir_raw

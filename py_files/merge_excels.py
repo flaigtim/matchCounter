@@ -18,18 +18,22 @@ HONOR_POTENTIAL_FONT = Font(color="FF8C00", bold=True)  # Orange fuer potenziell
 # =========================================
 # KONFIGURATION (hier jaehrlich anpassen)
 # =========================================
-YEARLY_FILE = "player_stats/stats_2025_2026.xlsx"
-OVERALL_FILE = "player_stats/_stats_overall.xlsx"
+YEARLY_HERREN_FILE = "player_stats/yearly_stats/2025_2026/herren_stats_2025_2026.xlsx"
+OVERALL_HERREN_FILE = "player_stats/_herren_stats_overall.xlsx"
+YEARLY_DAMEN_FILE = "player_stats/yearly_stats/2025_2026/damen_stats_2025_2026.xlsx"
+OVERALL_DAMEN_FILE = "player_stats/_damen_stats_overall.xlsx"
 NEW_SHEET    = "25-26"   # Name des neuen Tabellenblatts
 PREV_SHEET   = "24-25"   # Vorsaison-Blatt, das kopiert wird
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Fuehrt den Saison-Merge fuer die Excel-Dateien durch."
+        description="Fuehrt den Saison-Merge fuer Herren und Damen durch."
     )
-    parser.add_argument("--yearly", default=YEARLY_FILE, help=f"Yearly-Datei (Standard: {YEARLY_FILE})")
-    parser.add_argument("--overall", default=OVERALL_FILE, help=f"Overall-Datei (Standard: {OVERALL_FILE})")
+    parser.add_argument("--yearly-herren", default=YEARLY_HERREN_FILE, help=f"Yearly-Datei Herren (Standard: {YEARLY_HERREN_FILE})")
+    parser.add_argument("--overall-herren", default=OVERALL_HERREN_FILE, help=f"Overall-Datei Herren (Standard: {OVERALL_HERREN_FILE})")
+    parser.add_argument("--yearly-damen", default=YEARLY_DAMEN_FILE, help=f"Yearly-Datei Damen (Standard: {YEARLY_DAMEN_FILE})")
+    parser.add_argument("--overall-damen", default=OVERALL_DAMEN_FILE, help=f"Overall-Datei Damen (Standard: {OVERALL_DAMEN_FILE})")
     parser.add_argument("--new-sheet", default=NEW_SHEET, help=f"Neues Blatt (Standard: {NEW_SHEET})")
     parser.add_argument("--prev-sheet", default=PREV_SHEET, help=f"Vorsaison-Blatt (Standard: {PREV_SHEET})")
     return parser.parse_args()
@@ -136,16 +140,7 @@ def read_thresholds(ws: openpyxl.worksheet.worksheet.Worksheet) -> list[int]:
     return thresholds
 
 
-def main() -> None:
-    args = parse_args()
-
-    yearly_file = args.yearly
-    overall_file = args.overall
-    new_sheet = args.new_sheet
-    prev_sheet = args.prev_sheet
-
-    yearly_path = Path(yearly_file)
-    overall_path = Path(overall_file)
+def merge_one(yearly_path: Path, overall_path: Path, new_sheet: str, prev_sheet: str, label: str) -> None:
 
     if not overall_path.exists():
         raise FileNotFoundError(f"Overall-Datei nicht gefunden: {overall_path}")
@@ -246,9 +241,31 @@ def main() -> None:
             ws.cell(row=row, column=7).font = HONOR_POTENTIAL_FONT
 
     overall_wb.save(overall_path)
-    print(f"Blatt '{prev_sheet}' kopiert nach '{new_sheet}'")
-    print(f"Namen aus yearly uebernommen: {len(yearly_players)}")
-    print(f"Gespeichert: {overall_path}")
+    print(f"[{label}] Blatt '{prev_sheet}' kopiert nach '{new_sheet}'")
+    print(f"[{label}] Namen aus yearly uebernommen: {len(yearly_players)}")
+    print(f"[{label}] Gespeichert: {overall_path}")
+
+
+def main() -> None:
+    args = parse_args()
+    new_sheet = args.new_sheet
+    prev_sheet = args.prev_sheet
+
+    merge_one(
+        yearly_path=Path(args.yearly_herren),
+        overall_path=Path(args.overall_herren),
+        new_sheet=new_sheet,
+        prev_sheet=prev_sheet,
+        label="Herren",
+    )
+
+    merge_one(
+        yearly_path=Path(args.yearly_damen),
+        overall_path=Path(args.overall_damen),
+        new_sheet=new_sheet,
+        prev_sheet=prev_sheet,
+        label="Damen",
+    )
 
 
 if __name__ == "__main__":

@@ -55,7 +55,7 @@ def main() -> None:
         raise FileNotFoundError(f"Ordner nicht gefunden: {input_dir}")
 
     docx_files = sorted(
-        f for f in input_dir.glob("*.docx") if not f.name.startswith("~$")
+        f for f in input_dir.rglob("*.docx") if not f.name.startswith("~$")
     )
     if not docx_files:
         print("Keine DOCX-Dateien gefunden.")

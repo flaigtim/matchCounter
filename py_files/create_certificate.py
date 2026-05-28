@@ -9,10 +9,13 @@ from xml.sax.saxutils import escape
 import openpyxl
 
 
-OVERALL_FILE = "player_stats/_stats_overall.xlsx"
+OVERALL_HERREN_FILE = "player_stats/_herren_stats_overall.xlsx"
+OVERALL_DAMEN_FILE = "player_stats/_damen_stats_overall.xlsx"
 DEFAULT_SHEET = "25-26"
 DEFAULT_TEMPLATE = "template_certificate.docx"
 DEFAULT_OUTPUT_DIR = "player_stats/certificates/" + DEFAULT_SHEET
+DEFAULT_OUTPUT_DIR_HERREN = DEFAULT_OUTPUT_DIR
+DEFAULT_OUTPUT_DIR_DAMEN = DEFAULT_OUTPUT_DIR
 DEFAULT_CERTIFICATE_DATE = "06.06.2026"
 FIRST_DATA_ROW = 8                  # Zeile in Excel-Datei, ab der die Spielerdaten beginnen (z. B. 8)
 
@@ -244,7 +247,7 @@ def create_certificates(
         first_clean = normalize_name_part(first_name)
         last_clean = normalize_name_part(last_name)
 
-        name_block = f"{last_clean}{first_clean}"
+        name_block = f"{first_clean}{last_clean}"
         if not name_block:
             name_block = normalize_name_part(full_name) or "Spieler"
         filename_base = f"{name_block}_{nnn_value}"
@@ -296,8 +299,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--overall",
-        default=OVERALL_FILE,
-        help=f"Pfad zur Overall-Datei (Standard: {OVERALL_FILE})",
+        default="",
+        help="Legacy: nutzt denselben Pfad fuer Herren und Damen",
+    )
+    parser.add_argument(
+        "--overall-herren",
+        default=OVERALL_HERREN_FILE,
+        help=f"Pfad zur Herren-Overall-Datei (Standard: {OVERALL_HERREN_FILE})",
+    )
+    parser.add_argument(
+        "--overall-damen",
+        default=OVERALL_DAMEN_FILE,
+        help=f"Pfad zur Damen-Overall-Datei (Standard: {OVERALL_DAMEN_FILE})",
     )
     parser.add_argument(
         "--template",
@@ -306,8 +319,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--outdir",
-        default=DEFAULT_OUTPUT_DIR,
-        help=f"Zielordner fuer erzeugte Dateien (Standard: {DEFAULT_OUTPUT_DIR})",
+        default="",
+        help="Legacy: nutzt denselben Zielordner fuer Herren und Damen",
+    )
+    parser.add_argument(
+        "--outdir-herren",
+        default=DEFAULT_OUTPUT_DIR_HERREN,
+        help=f"Zielordner Herren (Standard: {DEFAULT_OUTPUT_DIR_HERREN})",
+    )
+    parser.add_argument(
+        "--outdir-damen",
+        default=DEFAULT_OUTPUT_DIR_DAMEN,
+        help=f"Zielordner Damen (Standard: {DEFAULT_OUTPUT_DIR_DAMEN})",
     )
     return parser.parse_args()
 
@@ -315,25 +338,45 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    overall_file = Path(args.overall)
     template_file = Path(args.template)
-    output_dir = Path(args.outdir)
 
-    players = iter_honored_players(overall_file=overall_file, sheet_name=args.sheet)
-    if not players:
+    overall_herren = Path(args.overall) if args.overall else Path(args.overall_herren)
+    overall_damen = Path(args.overall) if args.overall else Path(args.overall_damen)
+    outdir_herren = Path(args.outdir) if args.outdir else Path(args.outdir_herren)
+    outdir_damen = Path(args.outdir) if args.outdir else Path(args.outdir_damen)
+
+    profiles = [
+        ("Herren", overall_herren, outdir_herren),
+        ("Damen", overall_damen, outdir_damen),
+    ]
+
+    total_found = 0
+    total_created = 0
+
+    for label, overall_file, output_dir in profiles:
+        players = iter_honored_players(overall_file=overall_file, sheet_name=args.sheet)
+        if not players:
+            print(f"[{label}] Keine Ehrungen gefunden. Keine Dateien erzeugt.")
+            continue
+
+        created = create_certificates(
+            template_file=template_file,
+            output_dir=output_dir,
+            players=players,
+            certificate_date=args.date,
+        )
+
+        total_found += len(players)
+        total_created += created
+        print(f"[{label}] Ehrungen gefunden: {len(players)}")
+        print(f"[{label}] Urkunden erstellt: {created}")
+        print(f"[{label}] Ausgabeordner: {output_dir.resolve()}")
+
+    if total_found == 0:
         print("Keine Ehrungen gefunden. Keine Dateien erzeugt.")
-        return
-
-    created = create_certificates(
-        template_file=template_file,
-        output_dir=output_dir,
-        players=players,
-        certificate_date=args.date,
-    )
-
-    print(f"Ehrungen gefunden: {len(players)}")
-    print(f"Urkunden erstellt: {created}")
-    print(f"Ausgabeordner: {output_dir.resolve()}")
+    else:
+        print(f"Gesamt Ehrungen gefunden: {total_found}")
+        print(f"Gesamt Urkunden erstellt: {total_created}")
 
 
 if __name__ == "__main__":
